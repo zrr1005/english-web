@@ -2,7 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { parseText } from '../utils/parser'
 import { saveMaterial } from '../utils/storage'
-import { fetchBilibiliSubtitles, isBilibiliUrl, extractBvid } from '../utils/bilibili'
+import {
+  fetchBilibiliSubtitles, isBilibiliUrl, extractBvid,
+  checkSubtitlesExist, fetchChineseSubtitles
+} from '../utils/bilibili'
+import { callLLM, hasLLM } from '../utils/llm'
 
 type ImportMode = 'paste' | 'file' | 'bilibili'
 
@@ -13,74 +17,78 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [bilibiliUrl, setBilibiliUrl] = useState('')
+  const [subStatus, setSubStatus] = useState<{ hasEnglish: boolean; hasChinese: boolean; message: string } | null>(null)
+  const [translating, setTranslating] = useState(false)
   const navigate = useNavigate()
 
   const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge|OPR/.test(navigator.userAgent)
+
+  async function handleBilibiliBlur() {
+    const bvid = extractBvid(bilibiliUrl)
+    if (!bvid) { setSubStatus(null); return }
+    setSubStatus(null)
+    const status = await checkSubtitlesExist(bvid)
+    setSubStatus(status)
+  }
+
+  async function handleTranslateChinese() {
+    if (!hasLLM()) { setError('Configure an LLM API key in Settings first.'); return }
+    setTranslating(true); setError('')
+    try {
+      const { chineseText } = await fetchChineseSubtitles(bilibiliUrl)
+      const translated = await callLLM(
+        'You are a translator. Translate the following Chinese text to natural, fluent English. Output ONLY the English translation.',
+        chineseText, { maxTokens: 4000 }
+      )
+      if (!translated) throw new Error('Translation failed')
+      const sentences = parseText(translated, 'txt')
+      if (sentences.length === 0) throw new Error('No sentences in translation')
+      const mid = crypto.randomUUID()
+      await saveMaterial({
+        id: mid, title: title.trim() || 'Bilibili (AI translated)',
+        source: 'bilibili' as const, sentences, createdAt: Date.now(),
+        totalWords: sentences.reduce((s, sen) => s + sen.words.length, 0),
+      })
+      navigate('/library')
+    } catch (e: any) { setError(e.message || 'Translation failed.') }
+    setTranslating(false)
+  }
 
   async function handleImport() {
     setError('')
     let sourceText = ''
     let sourceFormat: 'paste' | 'srt' | 'vtt' | 'txt' | 'bilibili' = 'paste'
+    let finalTitle = title.trim()
 
     if (mode === 'bilibili') {
-      if (!bilibiliUrl.trim()) {
-        setError('Please enter a Bilibili video URL.')
-        return
-      }
-      if (!isBilibiliUrl(bilibiliUrl)) {
-        setError('Not a valid Bilibili URL.')
-        return
-      }
-      if (/b23\.tv/.test(bilibiliUrl)) {
-        setError('Short links (b23.tv) are not supported. Please copy the full URL from your browser.')
-        return
-      }
+      if (!bilibiliUrl.trim()) { setError('Enter a Bilibili video URL.'); return }
+      if (!isBilibiliUrl(bilibiliUrl)) { setError('Not a valid Bilibili URL.'); return }
+      if (/b23\.tv/.test(bilibiliUrl)) { setError('Short links (b23.tv) not supported.'); return }
       setLoading(true)
       try {
         const result = await fetchBilibiliSubtitles(bilibiliUrl)
-        sourceText = result.subtitles
-        sourceFormat = 'bilibili'
-        if (!title.trim()) setTitle(result.title)
-      } catch (e: any) {
-        setError(e.message || 'Failed to fetch subtitles from Bilibili.')
-        setLoading(false)
-        return
-      }
+        sourceText = result.subtitles; sourceFormat = 'bilibili'
+        if (!finalTitle) finalTitle = result.title
+      } catch (e: any) { setError(e.message || 'Failed.'); setLoading(false); return }
     } else {
       sourceText = text
       sourceFormat = mode === 'file' ? detectFormat(text) : 'paste'
     }
 
-    if (!sourceText.trim()) {
-      setError(mode === 'bilibili'
-        ? 'No English subtitles found on this video.'
-        : 'Please enter some English text.')
-      setLoading(false)
-      return
-    }
-
+    if (!sourceText.trim()) { setError('No content to practice.'); setLoading(false); return }
     setLoading(true)
     try {
       const sentences = parseText(sourceText, sourceFormat === 'bilibili' ? 'txt' : sourceFormat)
-      if (sentences.length === 0) {
-        setError('No sentences found. Please check your input.')
-        setLoading(false)
-        return
-      }
-
+      if (sentences.length === 0) { setError('No sentences found.'); setLoading(false); return }
       const material = {
         id: crypto.randomUUID(),
-        title: title.trim() || `Practice ${new Date().toLocaleDateString()}`,
-        source: sourceFormat,
-        sentences,
-        createdAt: Date.now(),
-        totalWords: sentences.reduce((sum, s) => sum + s.words.length, 0),
+        title: finalTitle || `Practice ${new Date().toLocaleDateString()}`,
+        source: sourceFormat, sentences, createdAt: Date.now(),
+        totalWords: sentences.reduce((s, sen) => s + sen.words.length, 0),
       }
       await saveMaterial(material)
-      navigate(`/practice/${material.id}`)
-    } catch (e) {
-      setError('Failed to process text. Please try again.')
-    }
+      navigate('/library')
+    } catch (e) { setError('Failed to process text.'); }
     setLoading(false)
   }
 
@@ -89,134 +97,143 @@ export default function HomePage() {
     if (!file) return
     const reader = new FileReader()
     reader.onload = (ev) => {
-      const content = ev.target?.result as string
-      setText(content)
+      const c = ev.target?.result as string; setText(c)
       if (!title) setTitle(file.name.replace(/\.\w+$/, ''))
     }
-    reader.readAsText(file)
-    setMode('file')
+    reader.readAsText(file); setMode('file')
   }
 
-  function switchMode(m: ImportMode) {
-    setMode(m)
-    setError('')
-    setText('')
-    setBilibiliUrl('')
-  }
+  const tabs: { key: ImportMode; icon: string; label: string }[] = [
+    { key: 'paste', icon: '✏️', label: 'Paste' },
+    { key: 'file', icon: '📁', label: 'Upload' },
+    { key: 'bilibili', icon: '📺', label: 'Bilibili' },
+  ]
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-12">
       {/* Hero */}
-      <section className="text-center py-8">
-        <h1 className="text-4xl md:text-5xl font-extrabold mb-3 bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-          SpeakEasy
+      <section className="text-center pt-6 pb-2 space-y-4">
+        <h1 className="font-display text-5xl md:text-6xl font-black text-ink-700 tracking-tight leading-tight">
+          Practice English<br />
+          <span className="text-amber-500 italic font-medium">with content you love</span>
         </h1>
-        <p className="text-gray-400 text-lg max-w-md mx-auto">
-          Import any English text or subtitle, then practice speaking, writing, and shadowing.
+        <p className="text-ink-300 text-lg max-w-lg mx-auto leading-relaxed">
+          Import subtitles, paste text, or link a Bilibili video.
+          Then listen, write, and speak — one sentence at a time.
         </p>
         {!isChrome && (
-          <div className="mt-4 p-3 bg-yellow-900/30 border border-yellow-700/50 rounded-lg text-yellow-300 text-sm max-w-md mx-auto">
-            Speech recognition works best in Chrome. Please switch for the full experience.
+          <div className="inline-block px-4 py-2 bg-amber-50 border border-amber-200 rounded-full text-amber-700 text-sm">
+            For the full experience, open in Chrome (speech recognition required).
           </div>
         )}
       </section>
 
-      {/* Import Panel */}
-      <section className="max-w-2xl mx-auto space-y-4">
-        {/* Mode tabs */}
-        <div className="flex gap-1 bg-gray-900 rounded-lg p-1">
-          {([
-            { key: 'paste' as const, icon: '✏️', label: 'Paste Text' },
-            { key: 'file' as const, icon: '📁', label: 'Upload File' },
-            { key: 'bilibili' as const, icon: '📺', label: 'Bilibili' },
-          ]).map((t) => (
-            <button
-              key={t.key}
-              onClick={() => switchMode(t.key)}
-              className={`flex-1 py-2 rounded-md text-sm font-medium transition flex items-center justify-center gap-1.5 ${
-                mode === t.key
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <span>{t.icon}</span>
-              <span className="hidden sm:inline">{t.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title (optional)"
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm placeholder-gray-500 focus:outline-none focus:border-indigo-500"
-        />
-
-        {/* Bilibili mode — URL input */}
-        {mode === 'bilibili' && (
-          <div className="space-y-2">
-            <input
-              type="text"
-              value={bilibiliUrl}
-              onChange={(e) => setBilibiliUrl(e.target.value)}
-              placeholder="Paste Bilibili video URL, e.g. https://www.bilibili.com/video/BV1xx411c7mD"
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm placeholder-gray-500 focus:outline-none focus:border-indigo-500 font-mono"
-            />
-            <p className="text-xs text-gray-600">
-              The video must have English subtitles uploaded. Uses Chrome proxy for API access.
-            </p>
+      {/* Import card */}
+      <section className="max-w-xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-sm border border-paper-300 overflow-hidden">
+          {/* Tabs */}
+          <div className="flex bg-paper-200 p-1.5 gap-1 mx-4 mt-4 rounded-xl">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => { setMode(t.key); setError(''); setText(''); setBilibiliUrl(''); setSubStatus(null) }}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                  mode === t.key
+                    ? 'bg-white text-ink-700 shadow-sm'
+                    : 'text-ink-300 hover:text-ink-500'
+                }`}
+              >
+                <span className="mr-1.5">{t.icon}</span>
+                {t.label}
+              </button>
+            ))}
           </div>
-        )}
 
-        {/* Paste / File mode — textarea */}
-        {mode !== 'bilibili' && (
-          <>
+          <div className="p-5 space-y-4">
+            {/* Title */}
+            <input
+              type="text" value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Title (optional)"
+              className="w-full bg-paper-100 border border-paper-300 rounded-xl px-4 py-3 text-sm text-ink-600 placeholder-ink-200 focus:outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-50 transition font-sans"
+            />
+
+            {/* Bilibili URL */}
+            {mode === 'bilibili' && (
+              <div className="space-y-2">
+                <input
+                  type="text" value={bilibiliUrl}
+                  onChange={(e) => { setBilibiliUrl(e.target.value); setSubStatus(null) }}
+                  onBlur={handleBilibiliBlur}
+                  placeholder="https://www.bilibili.com/video/BV..."
+                  className="w-full bg-paper-100 border border-paper-300 rounded-xl px-4 py-3 text-sm font-mono text-ink-600 placeholder-ink-200 focus:outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-50 transition"
+                />
+                {subStatus && (
+                  <p className={`text-xs font-medium px-1 ${
+                    subStatus.hasEnglish ? 'text-sage-600' : subStatus.hasChinese ? 'text-amber-600' : 'text-ink-300'
+                  }`}>
+                    {subStatus.hasEnglish ? '✓' : subStatus.hasChinese ? '!' : '·'} {subStatus.message}
+                  </p>
+                )}
+                {subStatus?.hasChinese && !subStatus?.hasEnglish && (
+                  <button onClick={handleTranslateChinese} disabled={translating}
+                    className="w-full py-3 bg-amber-50 hover:bg-amber-100 disabled:bg-paper-200 border border-amber-200 rounded-xl text-sm font-semibold text-amber-700 transition flex items-center justify-center gap-2"
+                  >
+                    <span>✨</span>
+                    <span>{translating ? 'Translating...' : hasLLM() ? 'Translate Chinese → English' : 'Set up LLM in Settings →'}</span>
+                  </button>
+                )}
+                {!subStatus && (
+                  <p className="text-xs text-ink-200 px-1">Paste a link and click outside to check subtitles.</p>
+                )}
+              </div>
+            )}
+
+            {/* Text area (paste) */}
+            {mode === 'paste' && (
+              <textarea
+                value={text} onChange={(e) => setText(e.target.value)}
+                placeholder={"The quick brown fox jumps over the lazy dog.\nIt was a beautiful day in the neighborhood."}
+                rows={10}
+                className="w-full bg-paper-100 border border-paper-300 rounded-xl px-4 py-3 text-sm font-mono text-ink-600 placeholder-ink-200 focus:outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-50 transition resize-y"
+              />
+            )}
+
+            {/* File upload */}
             {mode === 'file' && (
-              <label className="block w-full py-10 bg-gray-900 border-2 border-dashed border-gray-700 hover:border-indigo-500 rounded-lg text-center cursor-pointer transition">
-                <div className="text-3xl mb-2">📁</div>
-                <p className="text-sm text-gray-400">Click to upload .txt .srt .vtt file</p>
+              <label className="flex flex-col items-center gap-3 py-12 bg-paper-100 border-2 border-dashed border-paper-300 hover:border-amber-300 rounded-xl cursor-pointer transition group">
+                <span className="text-4xl group-hover:scale-110 transition-transform">📁</span>
+                <span className="text-sm text-ink-300 font-medium">Click to upload .txt .srt .vtt</span>
+                {text && <span className="text-xs text-sage-600 font-mono">File loaded ✓</span>}
                 <input type="file" accept=".txt,.srt,.vtt" onChange={handleFileUpload} className="hidden" />
               </label>
             )}
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={
-                mode === 'paste'
-                  ? 'Paste English text here...\n\nExample:\nThe quick brown fox jumps over the lazy dog. It was a beautiful day in the neighborhood.'
-                  : 'File content will appear here...'
-              }
-              rows={mode === 'file' ? 6 : 12}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-sm placeholder-gray-500 focus:outline-none focus:border-indigo-500 resize-y font-mono"
-            />
-          </>
-        )}
 
-        {error && (
-          <p className="text-red-400 text-sm">{error}</p>
-        )}
+            {error && <p className="text-sm text-rust-500 font-medium">{error}</p>}
 
-        <button
-          onClick={handleImport}
-          disabled={loading}
-          className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 rounded-lg font-semibold transition text-white"
-        >
-          {loading ? 'Fetching subtitles...' : 'Start Practicing →'}
-        </button>
+            <button onClick={handleImport} disabled={loading}
+              className="w-full py-3.5 bg-ink-700 hover:bg-ink-800 disabled:bg-paper-300 rounded-xl text-sm font-bold text-white transition-all duration-200 hover:shadow-lg active:scale-[0.98]"
+            >
+              {loading ? 'Processing…' : 'Start Practicing →'}
+            </button>
+          </div>
+        </div>
       </section>
 
-      {/* Feature cards */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto pt-4">
+      {/* Feature pills */}
+      <section className="flex flex-wrap justify-center gap-3 max-w-lg mx-auto">
         {[
-          { icon: '✍️', title: 'Write', desc: 'Dictation mode — listen and type each sentence.' },
-          { icon: '🎤', title: 'Speak', desc: 'Read aloud and get instant pronunciation feedback.' },
-          { icon: '🎭', title: 'Shadow', desc: 'Shadow the audio — auto-play and repeat.' },
+          { icon: '👂', label: 'Listen', desc: 'Hear the sentence' },
+          { icon: '✍️', label: 'Write', desc: 'Type from memory' },
+          { icon: '🎤', label: 'Speak', desc: 'Read aloud, get feedback' },
+          { icon: '🎭', label: 'Shadow', desc: 'Full-text flow practice' },
         ].map((f) => (
-          <div key={f.title} className="p-4 bg-gray-900 border border-gray-800 rounded-xl text-center">
-            <div className="text-3xl mb-2">{f.icon}</div>
-            <h3 className="font-semibold mb-1">{f.title}</h3>
-            <p className="text-gray-500 text-sm">{f.desc}</p>
+          <div key={f.label} className="flex items-center gap-3 px-4 py-3 bg-white rounded-full border border-paper-300 shadow-sm">
+            <span className="text-lg">{f.icon}</span>
+            <div>
+              <span className="text-sm font-semibold text-ink-600">{f.label}</span>
+              <span className="text-xs text-ink-300 ml-2 hidden sm:inline">{f.desc}</span>
+            </div>
           </div>
         ))}
       </section>

@@ -81,6 +81,70 @@ async function downloadSubtitle(subtitleUrl: string): Promise<SubtitleItem[]> {
 }
 
 /**
+ * Check what subtitles are available for a Bilibili video.
+ * Returns the availability info without downloading subtitle content.
+ */
+export async function checkSubtitlesExist(bvid: string): Promise<{
+  hasEnglish: boolean
+  hasChinese: boolean
+  message: string
+}> {
+  try {
+    const pages = await getPageList(bvid)
+    if (pages.length === 0) return { hasEnglish: false, hasChinese: false, message: 'Video not found' }
+
+    const list = await getSubtitleList(bvid, pages[0].cid)
+
+    if (list.length === 0) {
+      return { hasEnglish: false, hasChinese: false, message: 'No subtitles on this video' }
+    }
+
+    const hasEn = list.some((s: any) =>
+      s.lang_key?.includes('en') || s.lan_doc?.toLowerCase().includes('english')
+    )
+    const hasZh = list.some((s: any) =>
+      s.lang_key?.includes('zh') || s.lan_doc?.includes('中文') || s.lan_doc?.includes('Chinese')
+    )
+
+    if (hasEn) return { hasEnglish: true, hasChinese: hasZh, message: 'English subtitles available' }
+    if (hasZh) return { hasEnglish: false, hasChinese: true, message: 'Chinese subtitles available (AI translation needed)' }
+    return { hasEnglish: false, hasChinese: false, message: `Subtitles found but no English/Chinese (${list.length} track(s))` }
+  } catch {
+    return { hasEnglish: false, hasChinese: false, message: 'Check failed — try importing anyway' }
+  }
+}
+
+/**
+ * Fetch Chinese subtitles only (for AI translation fallback).
+ * Returns the raw Chinese text.
+ */
+export async function fetchChineseSubtitles(videoUrl: string): Promise<{
+  title: string
+  chineseText: string
+}> {
+  const bvid = extractBvid(videoUrl)
+  if (!bvid) throw new Error('Could not extract BV ID')
+
+  const pages = await getPageList(bvid)
+  const allText: string[] = []
+
+  for (const page of pages) {
+    const list = await getSubtitleList(bvid, page.cid)
+    if (list.length === 0) continue
+
+    const zhSub = list.find((s: any) =>
+      s.lang_key?.includes('zh') || s.lan_doc?.includes('中文')
+    )
+    if (!zhSub) continue
+
+    const items = await downloadSubtitle(zhSub.subtitle_url)
+    allText.push(items.map(i => i.content).join(' '))
+  }
+
+  return { title: `Bilibili: ${bvid}`, chineseText: allText.join('\n\n') }
+}
+
+/**
  * Main: fetch subtitles from a Bilibili video URL
  * Returns raw subtitle text joined as a single string
  */

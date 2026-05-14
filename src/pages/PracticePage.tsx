@@ -9,143 +9,82 @@ export default function PracticePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [material, setMaterial] = useState<TextMaterial | null>(null)
-  const [mode, setMode] = useState<PracticeMode>('practice')   // 'practice' | 'shadow'
+  const [mode, setMode] = useState<PracticeMode>('practice')
   const [currentIdx, setCurrentIdx] = useState(0)
   const [actionsMap, setActionsMap] = useState<Map<number, SentenceAction[]>>(new Map())
   const [startTime] = useState(Date.now())
 
   useEffect(() => {
-    if (id) {
-      getMaterial(id).then((m) => {
-        if (m) setMaterial(m)
-        else navigate('/')
-      })
-    }
+    if (id) getMaterial(id).then(m => { if (m) setMaterial(m); else navigate('/') })
   }, [id, navigate])
 
   const handleActionComplete = useCallback((action: SentenceAction) => {
-    setActionsMap((prev) => {
+    setActionsMap(prev => {
       const next = new Map(prev)
       const existing = next.get(action.sentenceIndex) || []
-      // Replace if same actionType, otherwise append
-      const filtered = existing.filter(a => a.actionType !== action.actionType)
-      next.set(action.sentenceIndex, [...filtered, action])
+      next.set(action.sentenceIndex, [...existing.filter(a => a.actionType !== action.actionType), action])
       return next
     })
   }, [])
 
   function handleNext() {
-    if (currentIdx < (material?.sentences.length || 0) - 1) {
-      setCurrentIdx((i) => i + 1)
-    } else {
-      finishPractice()
-    }
+    if (currentIdx < (material?.sentences.length || 0) - 1) setCurrentIdx(i => i + 1)
+    else finishPractice()
   }
 
-  function handlePrev() {
-    if (currentIdx > 0) setCurrentIdx((i) => i - 1)
-  }
+  function handlePrev() { if (currentIdx > 0) setCurrentIdx(i => i - 1) }
 
-  function handleShadowComplete(
-    shadowResults: { sentenceIndex: number; userInput: string; wordResults: WordResult[]; accuracy: number }[]
-  ) {
+  function handleShadowComplete(results: { sentenceIndex: number; userInput: string; wordResults: WordResult[]; accuracy: number }[]) {
     const map = new Map<number, SentenceAction[]>()
-    for (const r of shadowResults) {
-      map.set(r.sentenceIndex, [{
-        sentenceIndex: r.sentenceIndex,
-        actionType: 'speak',
-        userInput: r.userInput,
-        wordResults: r.wordResults,
-        accuracy: r.accuracy,
-        timestamp: Date.now(),
-      }])
-    }
-    setActionsMap(map)
-    // Return to practice view with results
-    setMode('practice')
-    setCurrentIdx(0)
+    for (const r of results) map.set(r.sentenceIndex, [{ sentenceIndex: r.sentenceIndex, actionType: 'speak', userInput: r.userInput, wordResults: r.wordResults, accuracy: r.accuracy, timestamp: Date.now() }])
+    setActionsMap(map); setMode('practice'); setCurrentIdx(0)
   }
 
   async function finishPractice() {
-    const allActions: SentenceAction[] = []
-    for (const actions of actionsMap.values()) {
-      allActions.push(...actions)
-    }
-    allActions.sort((a, b) => a.sentenceIndex - b.sentenceIndex)
-
-    const overallScore = allActions.length > 0
-      ? Math.round(allActions.reduce((sum, a) => sum + a.accuracy, 0) / allActions.length)
-      : 0
-
-    const record = {
-      id: crypto.randomUUID(),
-      materialId: material!.id,
-      actions: allActions,
-      overallScore,
-      duration: Date.now() - startTime,
-      createdAt: Date.now(),
-    }
-
-    await saveRecord(record)
-    navigate(`/report/${record.id}`)
+    const all: SentenceAction[] = []; for (const acts of actionsMap.values()) all.push(...acts)
+    all.sort((a, b) => a.sentenceIndex - b.sentenceIndex)
+    const score = all.length > 0 ? Math.round(all.reduce((s, a) => s + a.accuracy, 0) / all.length) : 0
+    const record = { id: crypto.randomUUID(), materialId: material!.id, actions: all, overallScore: score, duration: Date.now() - startTime, createdAt: Date.now() }
+    await saveRecord(record); navigate(`/report/${record.id}`)
   }
 
-  if (!material || material.sentences.length === 0) {
-    return (
-      <div className="text-center py-20 text-gray-500">
-        <div className="text-4xl mb-3">📖</div>
-        <p>Loading material...</p>
-      </div>
-    )
-  }
+  if (!material) return <div className="text-center py-24 text-ink-300 font-display text-lg">Loading…</div>
 
   const sentences = material.sentences
 
-  // Sentence dot state: 'empty' | 'partial' | 'done'
-  function getDotState(idx: number): 'empty' | 'partial' | 'done' {
-    const actions = actionsMap.get(idx)
-    if (!actions || actions.length === 0) return 'empty'
-    if (actions.length >= 3) return 'done'
+  function dotState(idx: number): 'empty' | 'partial' | 'done' {
+    const acts = actionsMap.get(idx)
+    if (!acts || acts.length === 0) return 'empty'
+    if (acts.length >= 3) return 'done'
     return 'partial'
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/library')} className="text-gray-400 hover:text-white text-sm">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-4 min-w-0">
+          <button onClick={() => navigate('/library')} className="text-sm text-ink-300 hover:text-ink-600 transition-colors shrink-0">
             ← Library
           </button>
-          <h1 className="text-lg font-bold truncate max-w-[200px]">{material.title}</h1>
+          <h1 className="font-display text-xl font-bold text-ink-700 truncate">{material.title}</h1>
         </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-600">{sentences.length} sentences</span>
-          <button
-            onClick={() => setMode(mode === 'shadow' ? 'practice' : 'shadow')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-              mode === 'shadow'
-                ? 'bg-purple-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:text-white'
-            }`}
-          >
-            {mode === 'shadow' ? '📖 Practice' : '🎭 Shadow'}
-          </button>
-        </div>
+        <button onClick={() => setMode(mode === 'shadow' ? 'practice' : 'shadow')}
+          className={`px-4 py-2 rounded-full text-xs font-bold border transition-all ${
+            mode === 'shadow'
+              ? 'bg-ink-700 text-white border-ink-700'
+              : 'bg-white text-ink-400 border-paper-300 hover:border-amber-300 hover:text-ink-600'
+          }`}>
+          {mode === 'shadow' ? '📖 Sentence Mode' : '🎭 Shadow Mode'}
+        </button>
       </div>
 
-      {/* Mode content */}
       {mode === 'shadow' ? (
-        <ShadowMode
-          key={`shadow-${startTime}`}
-          sentences={sentences}
-          onComplete={handleShadowComplete}
-        />
+        <ShadowMode key={`shadow-${startTime}`} sentences={sentences} onComplete={handleShadowComplete} />
       ) : (
         <>
           <SentencePractice
-            key={`practice-${currentIdx}`}
+            key={`sp-${currentIdx}`}
             sentence={sentences[currentIdx]}
             sentenceIndex={currentIdx}
             totalSentences={sentences.length}
@@ -155,28 +94,20 @@ export default function PracticePage() {
             onPrev={handlePrev}
           />
 
-          {/* Sentence navigation dots — three states */}
-          <div className="flex justify-center gap-1.5 flex-wrap pt-2">
+          {/* Sentence dots */}
+          <div className="flex justify-center gap-1.5 flex-wrap pt-4">
             {sentences.map((_, i) => {
-              const state = getDotState(i)
+              const s = dotState(i)
               return (
-                <button
-                  key={i}
-                  onClick={() => setCurrentIdx(i)}
-                  className={`w-3 h-3 rounded-full transition-all ${
+                <button key={i} onClick={() => setCurrentIdx(i)}
+                  className={`rounded-full transition-all duration-200 ${
                     i === currentIdx
-                      ? 'bg-indigo-500 ring-2 ring-indigo-500/30 scale-125'
-                      : state === 'done'
-                      ? 'bg-green-500'
-                      : state === 'partial'
-                      ? 'bg-yellow-500'
-                      : 'bg-gray-700 hover:bg-gray-600'
+                      ? 'w-2.5 h-2.5 bg-ink-700 scale-125 ring-2 ring-amber-200'
+                      : s === 'done' ? 'w-2 h-2 bg-sage-400'
+                      : s === 'partial' ? 'w-2 h-2 bg-amber-400'
+                      : 'w-2 h-2 bg-paper-300 hover:bg-paper-400'
                   }`}
-                  title={`Sentence ${i + 1}${
-                    state === 'done' ? ' (all done)' :
-                    state === 'partial' ? ' (partial)' : ''
-                  }`}
-                />
+                  title={`Sentence ${i + 1}${s === 'done' ? ' ✓' : s === 'partial' ? ' ~' : ''}`} />
               )
             })}
           </div>

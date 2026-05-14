@@ -5,6 +5,13 @@ export interface TextMaterial {
   sentences: Sentence[]
   createdAt: number
   totalWords: number
+  translation?: string
+  translationSource?: 'bilibili' | 'llm' | 'manual'
+}
+
+export interface MaterialWithScores extends TextMaterial {
+  dictationScore: number | null
+  shadowScore: number | null
 }
 
 export interface Sentence {

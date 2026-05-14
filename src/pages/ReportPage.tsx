@@ -8,91 +8,60 @@ export default function ReportPage() {
   const [record, setRecord] = useState<PracticeRecord | null>(null)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    if (id) getRecord(id).then(setRecord)
-  }, [id])
+  useEffect(() => { if (id) getRecord(id).then(setRecord) }, [id])
 
-  if (!record) {
-    return <div className="text-center py-20 text-gray-500">Loading...</div>
-  }
+  if (!record) return <div className="text-center py-24 text-ink-300 font-display text-lg">Loading…</div>
 
-  // Group actions by sentence index
-  const groupedBySentence = new Map<number, SentenceAction[]>()
+  const grouped = new Map<number, SentenceAction[]>()
   for (const a of record.actions) {
-    const existing = groupedBySentence.get(a.sentenceIndex) || []
-    groupedBySentence.set(a.sentenceIndex, [...existing, a])
+    const e = grouped.get(a.sentenceIndex) || []
+    grouped.set(a.sentenceIndex, [...e, a])
   }
-  const sentenceEntries = Array.from(groupedBySentence.entries()).sort(([a], [b]) => a - b)
+  const entries = Array.from(grouped.entries()).sort(([a], [b]) => a - b)
 
-  const actionTypeLabel: Record<string, string> = {
-    listen: '🔊 Listened',
-    write: '✍️ Wrote',
-    speak: '🎤 Spoke',
-  }
+  const labelMap: Record<string, string> = { listen: '👂', write: '✍️', speak: '🎤' }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-white text-sm">
-        ← Back
-      </button>
+    <div className="max-w-2xl mx-auto space-y-8">
+      <button onClick={() => navigate(-1)} className="text-sm text-ink-300 hover:text-ink-600 transition-colors">← Back</button>
 
-      <div className="text-center py-6">
-        <div className="text-5xl mb-3">
-          {record.overallScore >= 90 ? '🏆' : record.overallScore >= 70 ? '⭐' : '💪'}
-        </div>
-        <div className="text-4xl font-extrabold text-indigo-400">{record.overallScore}%</div>
-        <p className="text-gray-400 mt-2">
-          {record.actions.length} actions · {sentenceEntries.length} sentences ·{' '}
-          {Math.round(record.duration / 1000)}s
+      {/* Score hero */}
+      <div className="text-center py-10 space-y-3">
+        <div className="text-6xl">{record.overallScore >= 90 ? '🏆' : record.overallScore >= 70 ? '⭐' : '💪'}</div>
+        <div className="font-display text-5xl font-black text-ink-700">{record.overallScore}<span className="text-2xl text-ink-300">%</span></div>
+        <p className="text-ink-300 text-sm">
+          {record.actions.length} actions across {entries.length} sentences · {Math.round(record.duration / 1000)}s
         </p>
       </div>
 
+      {/* Sentence list */}
       <div className="space-y-3">
-        <h3 className="font-semibold text-lg">Sentence Details</h3>
-        {sentenceEntries.map(([sentenceIdx, actions]) => (
-          <div key={sentenceIdx} className="p-4 bg-gray-900 border border-gray-800 rounded-xl">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-500">Sentence {sentenceIdx + 1}</span>
-              <span className="text-xs text-gray-600">
-                {actions.map(a => actionTypeLabel[a.actionType] || a.actionType).join(' · ')}
-              </span>
+        <h3 className="font-display text-xl font-bold text-ink-700">Details</h3>
+        {entries.map(([idx, actions]) => (
+          <div key={idx} className="bg-white border border-paper-300 rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-ink-500">Sentence {idx + 1}</span>
+              <span className="text-xs text-ink-300">{actions.map(a => labelMap[a.actionType] || a.actionType).join(' ')}</span>
             </div>
-
-            {actions.map((action, i) => (
-              <div key={i} className="mb-2 last:mb-0">
+            {actions.map((a, i) => (
+              <div key={i}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-600">{actionTypeLabel[action.actionType]}</span>
-                  {action.wordResults.length > 0 && (
-                    <span className={`text-xs font-mono font-bold ${
-                      action.accuracy >= 90 ? 'text-green-400' :
-                      action.accuracy >= 60 ? 'text-yellow-400' : 'text-red-400'
-                    }`}>
-                      {action.accuracy}%
-                    </span>
+                  <span className="text-xs font-semibold text-ink-400 uppercase">{labelMap[a.actionType]} {a.actionType}</span>
+                  {a.wordResults.length > 0 && (
+                    <span className={`text-xs font-bold font-mono ${a.accuracy >= 90 ? 'text-sage-600' : a.accuracy >= 60 ? 'text-amber-600' : 'text-rust-500'}`}>{a.accuracy}%</span>
                   )}
                 </div>
-                {action.wordResults.length > 0 && (
+                {a.wordResults.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-1">
-                    {action.wordResults.map((w, j) => (
-                      <span key={j} className={`text-xs px-1 py-0.5 rounded ${
-                        w.match === 'correct' ? 'bg-green-900/40 text-green-300' :
-                        w.match === 'missing' ? 'bg-red-900/40 text-red-300 line-through' :
-                        w.match === 'extra' ? 'bg-yellow-900/40 text-yellow-300' :
-                        'bg-red-900/40 text-red-300'
-                      }`}>
-                        {w.original || w.user}
-                      </span>
+                    {a.wordResults.map((w, j) => (
+                      <span key={j} className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                        w.match === 'correct' ? 'bg-sage-50 text-sage-700' : w.match === 'missing' ? 'bg-rust-50 text-rust-500 line-through' : w.match === 'extra' ? 'bg-amber-50 text-amber-600' : 'bg-rust-50 text-rust-500'
+                      }`}>{w.original || w.user}</span>
                     ))}
                   </div>
                 )}
-                {action.userInput && (
-                  <p className="text-xs text-gray-600 font-mono truncate">
-                    {action.actionType === 'speak' ? 'Said' : 'Wrote'}: "{action.userInput}"
-                  </p>
-                )}
-                {action.audioUrl && (
-                  <audio src={action.audioUrl} controls className="h-7 mt-1" />
-                )}
+                {a.userInput && <p className="text-xs text-ink-300 font-mono truncate">{a.actionType === 'speak' ? 'Said' : 'Wrote'}: "{a.userInput}"</p>}
+                {a.audioUrl && <audio src={a.audioUrl} controls className="h-7 mt-1" />}
               </div>
             ))}
           </div>
