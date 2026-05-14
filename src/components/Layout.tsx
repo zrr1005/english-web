@@ -32,7 +32,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   : 'text-ink-300 hover:text-ink-600'
               }`}
             >
-              Home
+              首页
             </Link>
             <Link
               to="/library"
@@ -42,7 +42,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   : 'text-ink-300 hover:text-ink-600'
               }`}
             >
-              Library
+              素材库
             </Link>
             <Link
               to="/settings"
@@ -53,7 +53,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   ? 'text-sage-500'
                   : 'text-ink-300 hover:text-ink-600'
               }`}
-              title="Settings"
+              title="设置"
             >
               ⚙
             </Link>
@@ -64,7 +64,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
       <footer className="text-center py-6 text-xs text-ink-200 font-medium tracking-wide">
-        SpeakEasy — Practice English with content you love
+        SpeakEasy — 用你喜欢的内容练英语口语
       </footer>
     </div>
   )

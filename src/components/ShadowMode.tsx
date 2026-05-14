@@ -52,34 +52,25 @@ export default function ShadowMode({ sentences, onComplete }: Props) {
   function handleStart() { setResults([]); playThenListen(0) }
   function handleStop() { stopSpeaking(); stopRecognition(); setPhase('idle') }
 
-  function handleManualNext() {
-    stopRecognition(); stopSpeaking()
-    const final = finalTranscript.current.trim()
-    const res = compareWords(sentences[currentIdx].text, final); const score = calcAccuracy(res)
-    setWordResults(res); setAccuracy(score); setTranscript(final); setPhase('scoring')
-    const nr = [...results, { sentenceIndex: currentIdx, userInput: final, wordResults: res, accuracy: score }]
-    setResults(nr)
-    if (currentIdx + 1 < sentences.length) {
-      setTimeout(() => { setCurrentIdx(currentIdx + 1); setPhase('idle'); setTranscript(''); finalTranscript.current = '' }, 200)
-    } else setTimeout(() => onComplete(nr), 800)
-  }
-
-  if (!supported) return <p className="text-center text-amber-600 py-12">Speech recognition requires Chrome.</p>
+  if (!supported) return <p className="text-center text-amber-600 py-12">语音识别需要 Chrome 浏览器</p>
 
   const isRunning = phase !== 'idle'
   const phaseBg = phase === 'playing' ? 'border-l-ink-400 bg-ink-50/50' :
     phase === 'listening' ? 'border-l-sage-400 bg-sage-50/50' :
     phase === 'scoring' ? 'border-l-amber-400 bg-amber-50/50' : ''
 
+  const phaseLabel: Record<string, string> = {
+    playing: '🔊 播放中', listening: '🎤 该你了 — 跟读', scoring: '📊 评分', idle: '就绪'
+  }
+
   return (
     <div className="space-y-6">
-      {/* Controls */}
       <div className="flex items-center gap-3 flex-wrap">
         <button onClick={isRunning ? handleStop : handleStart}
           className={`px-6 py-2.5 rounded-full text-sm font-bold transition-all ${
             isRunning ? 'bg-rust-500 hover:bg-rust-600 text-white' : 'bg-ink-700 hover:bg-ink-800 text-white hover:shadow-lg'
           }`}>
-          {isRunning ? '⏹ Stop' : '▶ Start'}
+          {isRunning ? '⏹ 停止' : '▶ 开始'}
         </button>
         <div className="flex bg-paper-200 rounded-full p-1 gap-0.5">
           {[0.5, 0.75, 1, 1.25].map(r => (
@@ -93,11 +84,10 @@ export default function ShadowMode({ sentences, onComplete }: Props) {
           className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition ${
             autoMode ? 'bg-sage-50 border-sage-200 text-sage-600' : 'bg-white border-paper-300 text-ink-400'
           }`}>
-          {autoMode ? 'Auto' : 'Manual'}
+          {autoMode ? '自动' : '手动'}
         </button>
       </div>
 
-      {/* Progress */}
       <div className="flex items-center gap-3">
         <div className="flex-1 h-1 bg-paper-300 rounded-full overflow-hidden">
           <div className="h-full bg-amber-400 rounded-full transition-all duration-500"
@@ -106,28 +96,23 @@ export default function ShadowMode({ sentences, onComplete }: Props) {
         <span className="text-xs font-semibold text-ink-300 tabular-nums">{currentIdx}/{sentences.length}</span>
       </div>
 
-      {/* Current sentence */}
       <div className={`rounded-2xl border border-paper-300 border-l-4 p-8 text-center transition-colors duration-300 ${phaseBg}`}>
-        <span className="text-xs font-semibold text-ink-400 uppercase tracking-wider block mb-3">
-          {phase === 'playing' ? '🔊 Playing' : phase === 'listening' ? '🎤 Your turn — speak now' : phase === 'scoring' ? '📊 Scored' : 'Ready'}
-        </span>
+        <span className="text-xs font-semibold text-ink-400 uppercase tracking-wider block mb-3">{phaseLabel[phase]}</span>
         <p className="font-display text-2xl md:text-3xl text-ink-700 leading-relaxed italic">
           {sentences[currentIdx]?.text}
         </p>
       </div>
 
-      {/* Transcript */}
       {phase === 'listening' && (
         <div className="p-5 bg-white rounded-xl border border-paper-300 shadow-sm min-h-[60px]">
-          <p className="text-sm text-ink-500 leading-relaxed">{transcript || <span className="text-ink-200 italic">Listening...</span>}</p>
+          <p className="text-sm text-ink-500 leading-relaxed">{transcript || <span className="text-ink-200 italic">聆听中…</span>}</p>
         </div>
       )}
 
-      {/* Score */}
       {phase === 'scoring' && (
         <div className="bg-white rounded-xl border border-paper-300 shadow-sm p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-ink-500">Accuracy</span>
+            <span className="text-sm font-semibold text-ink-500">准确率</span>
             <span className={`text-lg font-bold ${accuracy >= 90 ? 'text-sage-600' : accuracy >= 60 ? 'text-amber-600' : 'text-rust-500'}`}>{accuracy}%</span>
           </div>
           <div className="flex flex-wrap gap-1">{wordResults.map((w, i) => (
@@ -136,14 +121,6 @@ export default function ShadowMode({ sentences, onComplete }: Props) {
             }`}>{w.original || w.user}</span>
           ))}</div>
         </div>
-      )}
-
-      {/* Manual next */}
-      {!autoMode && phase === 'idle' && currentIdx > 0 && (
-        <button onClick={handleManualNext}
-          className="w-full py-3 bg-ink-700 hover:bg-ink-800 rounded-full text-sm font-bold text-white transition-all hover:shadow-lg">
-          Next Sentence →
-        </button>
       )}
     </div>
   )

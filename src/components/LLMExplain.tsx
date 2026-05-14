@@ -20,14 +20,14 @@ export default function LLMExplain({ systemPrompt, userPrompt, label }: Props) {
     const res = await callLLM(systemPrompt, userPrompt)
     setLoading(false)
     if (res) setResult(res)
-    else setError('Failed. Check your API key or network.')
+    else setError('调用失败，请检查 API Key 或网络')
   }
 
   return (
     <div>
       <button onClick={handleClick} disabled={loading}
         className="text-xs text-amber-600 hover:text-amber-700 font-medium transition-colors">
-        {loading ? 'Thinking…' : result ? `Hide ${label}` : `✨ ${label}`}
+        {loading ? '思考中…' : result ? `收起 ${label}` : `✨ ${label}`}
       </button>
       {error && <p className="text-xs text-rust-500 mt-1">{error}</p>}
       {result && (

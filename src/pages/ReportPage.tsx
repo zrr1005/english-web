@@ -10,7 +10,7 @@ export default function ReportPage() {
 
   useEffect(() => { if (id) getRecord(id).then(setRecord) }, [id])
 
-  if (!record) return <div className="text-center py-24 text-ink-300 font-display text-lg">Loading…</div>
+  if (!record) return <div className="text-center py-24 text-ink-300 font-display text-lg">加载中…</div>
 
   const grouped = new Map<number, SentenceAction[]>()
   for (const a of record.actions) {
@@ -20,33 +20,32 @@ export default function ReportPage() {
   const entries = Array.from(grouped.entries()).sort(([a], [b]) => a - b)
 
   const labelMap: Record<string, string> = { listen: '👂', write: '✍️', speak: '🎤' }
+  const labelName: Record<string, string> = { listen: '听', write: '写', speak: '读' }
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
-      <button onClick={() => navigate(-1)} className="text-sm text-ink-300 hover:text-ink-600 transition-colors">← Back</button>
+      <button onClick={() => navigate(-1)} className="text-sm text-ink-300 hover:text-ink-600 transition-colors">← 返回</button>
 
-      {/* Score hero */}
       <div className="text-center py-10 space-y-3">
         <div className="text-6xl">{record.overallScore >= 90 ? '🏆' : record.overallScore >= 70 ? '⭐' : '💪'}</div>
         <div className="font-display text-5xl font-black text-ink-700">{record.overallScore}<span className="text-2xl text-ink-300">%</span></div>
         <p className="text-ink-300 text-sm">
-          {record.actions.length} actions across {entries.length} sentences · {Math.round(record.duration / 1000)}s
+          {record.actions.length} 次操作 · {entries.length} 句 · {Math.round(record.duration / 1000)}秒
         </p>
       </div>
 
-      {/* Sentence list */}
       <div className="space-y-3">
-        <h3 className="font-display text-xl font-bold text-ink-700">Details</h3>
+        <h3 className="font-display text-xl font-bold text-ink-700">逐句详情</h3>
         {entries.map(([idx, actions]) => (
           <div key={idx} className="bg-white border border-paper-300 rounded-xl p-5 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-ink-500">Sentence {idx + 1}</span>
+              <span className="text-sm font-semibold text-ink-500">第 {idx + 1} 句</span>
               <span className="text-xs text-ink-300">{actions.map(a => labelMap[a.actionType] || a.actionType).join(' ')}</span>
             </div>
             {actions.map((a, i) => (
               <div key={i}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-ink-400 uppercase">{labelMap[a.actionType]} {a.actionType}</span>
+                  <span className="text-xs font-semibold text-ink-400 uppercase">{labelMap[a.actionType]} {labelName[a.actionType]}</span>
                   {a.wordResults.length > 0 && (
                     <span className={`text-xs font-bold font-mono ${a.accuracy >= 90 ? 'text-sage-600' : a.accuracy >= 60 ? 'text-amber-600' : 'text-rust-500'}`}>{a.accuracy}%</span>
                   )}
@@ -60,7 +59,7 @@ export default function ReportPage() {
                     ))}
                   </div>
                 )}
-                {a.userInput && <p className="text-xs text-ink-300 font-mono truncate">{a.actionType === 'speak' ? 'Said' : 'Wrote'}: "{a.userInput}"</p>}
+                {a.userInput && <p className="text-xs text-ink-300 font-mono truncate">{a.actionType === 'speak' ? '朗读' : '默写'}: "{a.userInput}"</p>}
                 {a.audioUrl && <audio src={a.audioUrl} controls className="h-7 mt-1" />}
               </div>
             ))}

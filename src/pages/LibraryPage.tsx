@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getAllMaterials, deleteMaterial, getDictationScore, getShadowScore } from '../utils/storage'
-import type { MaterialWithScores, TextMaterial } from '../types'
+import type { MaterialWithScores } from '../types'
 
 export default function LibraryPage() {
   const [materials, setMaterials] = useState<MaterialWithScores[]>([])
@@ -30,18 +30,18 @@ export default function LibraryPage() {
   }
 
   if (loading) {
-    return <div className="text-center py-24 text-ink-300 font-display text-lg">Loading…</div>
+    return <div className="text-center py-24 text-ink-300 font-display text-lg">加载中…</div>
   }
 
   if (materials.length === 0) {
     return (
       <div className="text-center py-24 space-y-5">
         <div className="text-6xl">📚</div>
-        <h2 className="font-display text-2xl font-bold text-ink-600">Your library is empty</h2>
-        <p className="text-ink-300">Import some content to get started.</p>
+        <h2 className="font-display text-2xl font-bold text-ink-600">素材库是空的</h2>
+        <p className="text-ink-300">导入一些内容开始练习吧</p>
         <button onClick={() => navigate('/')}
           className="inline-block px-6 py-3 bg-ink-700 hover:bg-ink-800 text-white rounded-full text-sm font-semibold transition-all hover:shadow-lg">
-          Import Content →
+          导入内容 →
         </button>
       </div>
     )
@@ -52,10 +52,10 @@ export default function LibraryPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="font-display text-3xl font-bold text-ink-700">My Materials</h1>
+        <h1 className="font-display text-3xl font-bold text-ink-700">我的素材</h1>
         <button onClick={() => navigate('/')}
           className="px-5 py-2.5 bg-ink-700 hover:bg-ink-800 text-white rounded-full text-sm font-semibold transition-all hover:shadow-lg">
-          + Import
+          + 导入
         </button>
       </div>
 
@@ -64,7 +64,6 @@ export default function LibraryPage() {
           <div key={m.id}
             className="group bg-white rounded-xl border border-paper-300 hover:border-amber-300 hover:shadow-md transition-all duration-200"
           >
-            {/* Main row: click name → full-text listening */}
             <div
               onClick={() => navigate(`/listen/${m.id}`)}
               className="flex items-center justify-between p-5 cursor-pointer"
@@ -75,30 +74,28 @@ export default function LibraryPage() {
                 </h3>
                 <p className="text-xs text-ink-300 flex items-center gap-2">
                   <span>{sourceIcon[m.source] || '📄'}</span>
-                  <span>{m.sentences.length} sentences</span>
+                  <span>{m.sentences.length} 句</span>
                   <span>·</span>
-                  <span>{m.totalWords} words</span>
+                  <span>{m.totalWords} 词</span>
                   <span>·</span>
                   <span>{new Date(m.createdAt).toLocaleDateString()}</span>
                 </p>
               </div>
 
-              {/* Scores */}
               <div className="flex items-center gap-6 shrink-0 ml-4">
-                <ScoreBadge label="Dictation" score={m.dictationScore}
+                <ScoreBadge label="听写" score={m.dictationScore}
                   onClick={(e) => { e.stopPropagation(); navigate(`/listen/${m.id}?mode=dictation`) }} />
-                <ScoreBadge label="Shadow" score={m.shadowScore}
+                <ScoreBadge label="跟读" score={m.shadowScore}
                   onClick={(e) => { e.stopPropagation(); navigate(`/listen/${m.id}?mode=shadow`) }} />
               </div>
             </div>
 
-            {/* Delete button — visible on hover */}
             <div className="px-5 pb-3 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(m.id) }}
                 className="text-xs text-ink-300 hover:text-rust-500 transition-colors"
               >
-                Delete
+                删除
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { getMaterial, saveTranslation } from '../utils/storage'
 import { speak, stopSpeaking } from '../utils/speech'
@@ -25,20 +25,17 @@ export default function ListenPage() {
   const [translating, setTranslating] = useState(false)
   const [editTranslation, setEditTranslation] = useState(false)
 
-  // Dictation state
   const [dictIdx, setDictIdx] = useState(0)
   const [dictActions, setDictActions] = useState<Map<number, SentenceAction[]>>(new Map())
 
   const sentences = material?.sentences || []
 
-  // Check for mode in query params
   useEffect(() => {
     const mode = searchParams.get('mode')
     if (mode === 'dictation') setViewMode('dictation')
     else if (mode === 'shadow') setViewMode('shadow')
   }, [searchParams])
 
-  // Load material
   useEffect(() => {
     if (id) getMaterial(id).then(m => {
       if (m) {
@@ -48,14 +45,13 @@ export default function ListenPage() {
     })
   }, [id, navigate])
 
-  // Play full text with sentence tracking
   const playFullText = useCallback(async () => {
     if (!material || playing) return
     setPlaying(true)
     for (let i = 0; i < sentences.length; i++) {
       setCurrentSentIdx(i)
       await speak(sentences[i].text)
-      if (!playing) break // stopped mid-way
+      if (!playing) break
     }
     setCurrentSentIdx(-1)
     setPlaying(false)
@@ -67,13 +63,12 @@ export default function ListenPage() {
     setCurrentSentIdx(-1)
   }
 
-  // Translation
   async function handleLLMTranslate() {
     if (!material || !hasLLM()) return
     setTranslating(true)
     const fullText = sentences.map(s => s.text).join(' ')
     const result = await callLLM(
-      'Translate the following English text to Chinese. Output only the Chinese translation.',
+      '将以下英文原文翻译成中文。只输出中文译文，不要解释。',
       fullText, { maxTokens: 4000 }
     )
     if (result) {
@@ -89,7 +84,6 @@ export default function ListenPage() {
     await saveTranslation(material.id, translationInput, 'manual')
   }
 
-  // Dictation
   function handleDictationComplete(action: SentenceAction) {
     setDictActions(prev => {
       const next = new Map(prev)
@@ -99,63 +93,54 @@ export default function ListenPage() {
     })
   }
 
-  // Shadow
-  function handleShadowComplete(results: { sentenceIndex: number; userInput: string; wordResults: WordResult[]; accuracy: number }[]) {
+  function handleShadowComplete(_results: { sentenceIndex: number; userInput: string; wordResults: WordResult[]; accuracy: number }[]) {
     setViewMode('listen')
   }
 
-  if (!material) return <div className="text-center py-24 text-ink-300 font-display text-lg">Loading…</div>
-  if (sentences.length === 0) return <div className="text-center py-24 text-ink-300">No sentences found.</div>
+  if (!material) return <div className="text-center py-24 text-ink-300 font-display text-lg">加载中…</div>
+  if (sentences.length === 0) return <div className="text-center py-24 text-ink-300">没有找到句子</div>
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-4 min-w-0">
           <button onClick={() => navigate('/library')} className="text-sm text-ink-300 hover:text-ink-600 transition-colors shrink-0">
-            ← Library
+            ← 素材库
           </button>
           <h1 className="font-display text-xl font-bold text-ink-700 truncate">{material.title}</h1>
         </div>
-        <span className="text-xs text-ink-300">{sentences.length} sentences</span>
+        <span className="text-xs text-ink-300">{sentences.length} 句</span>
       </div>
 
-      {/* ── LISTEN MODE ── */}
+      {/* 听力模式 */}
       {viewMode === 'listen' && (
         <div className="space-y-6">
-          {/* Control bar */}
           <div className="flex items-center gap-2 flex-wrap bg-white rounded-2xl border border-paper-300 shadow-sm p-2">
             <button
               onClick={playing ? stopPlayback : playFullText}
               className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all ${
-                playing
-                  ? 'bg-rust-500 text-white'
-                  : 'bg-ink-700 hover:bg-ink-800 text-white hover:shadow-md'
+                playing ? 'bg-rust-500 text-white' : 'bg-ink-700 hover:bg-ink-800 text-white hover:shadow-md'
               }`}
             >
-              {playing ? '⏹ Stop' : '▶ Play Full Text'}
+              {playing ? '⏹ 停止' : '▶ 播放全文'}
             </button>
 
             <button
               onClick={() => setShowText(!showText)}
               className={`px-4 py-2.5 rounded-full text-sm font-semibold border transition ${
-                !showText
-                  ? 'bg-amber-50 border-amber-300 text-amber-700'
-                  : 'bg-white border-paper-300 text-ink-500 hover:border-amber-300'
+                !showText ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-paper-300 text-ink-500 hover:border-amber-300'
               }`}
             >
-              {showText ? '👁 Hide Text' : '👁 Show Text (Blind Mode)'}
+              {showText ? '👁 隐藏原文' : '👁 显示原文（盲听中）'}
             </button>
 
             <button
               onClick={() => setShowTranslation(!showTranslation)}
               className={`px-4 py-2.5 rounded-full text-sm font-semibold border transition ${
-                showTranslation
-                  ? 'bg-amber-50 border-amber-300 text-amber-700'
-                  : 'bg-white border-paper-300 text-ink-500 hover:border-amber-300'
+                showTranslation ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-paper-300 text-ink-500 hover:border-amber-300'
               }`}
             >
-              🌐 {showTranslation ? 'Hide Translation' : 'Translation'}
+              🌐 {showTranslation ? '隐藏译文' : '译文'}
             </button>
 
             <div className="flex-1" />
@@ -164,17 +149,17 @@ export default function ListenPage() {
               onClick={() => { setDictIdx(0); setDictActions(new Map()); setViewMode('dictation') }}
               className="px-4 py-2.5 rounded-full text-sm font-semibold border border-paper-300 bg-white text-ink-500 hover:border-amber-300 hover:text-ink-700 transition"
             >
-              ✍️ Dictation
+              ✍️ 逐句听写
             </button>
             <button
               onClick={() => setViewMode('shadow')}
               className="px-4 py-2.5 rounded-full text-sm font-semibold border border-paper-300 bg-white text-ink-500 hover:border-amber-300 hover:text-ink-700 transition"
             >
-              🎭 Shadow
+              🎭 影子跟读
             </button>
           </div>
 
-          {/* Progress bar */}
+          {/* 进度条 */}
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <div className="flex-1 h-1.5 bg-paper-300 rounded-full overflow-hidden">
@@ -186,7 +171,7 @@ export default function ListenPage() {
               </span>
             </div>
 
-            {/* Voice waveform (visible in blind mode) */}
+            {/* 盲听语音纹 */}
             {!showText && (
               <div className="flex items-end gap-[1px] h-12 px-1">
                 {sentences.map((s, i) => {
@@ -206,7 +191,7 @@ export default function ListenPage() {
             )}
           </div>
 
-          {/* Full text (hidden in blind mode) */}
+          {/* 全文 */}
           {showText && (
             <div className="bg-white rounded-2xl border border-paper-300 shadow-sm p-6 md:p-8">
               <div className="font-display text-lg md:text-xl text-ink-700 leading-relaxed space-y-1">
@@ -214,9 +199,7 @@ export default function ListenPage() {
                   <span key={i}
                     onClick={() => { stopPlayback(); speak(s.text) }}
                     className={`cursor-pointer transition-colors duration-200 hover:text-amber-600 ${
-                      i === currentSentIdx
-                        ? 'bg-amber-100 text-amber-700 rounded px-0.5 -mx-0.5'
-                        : ''
+                      i === currentSentIdx ? 'bg-amber-100 text-amber-700 rounded px-0.5 -mx-0.5' : ''
                     }`}
                   >
                     {s.text}{' '}
@@ -226,23 +209,23 @@ export default function ListenPage() {
             </div>
           )}
 
-          {/* Translation */}
+          {/* 译文 */}
           {showTranslation && (
             <div className="bg-white rounded-2xl border border-paper-300 shadow-sm p-6 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-ink-400 uppercase tracking-wider">
-                  🌐 Translation {translationSource && <span className="text-ink-200">· {translationSource}</span>}
+                  🌐 译文 {translationSource && <span className="text-ink-200">· {translationSource === 'bilibili' ? 'B站' : translationSource === 'llm' ? 'AI翻译' : '手动'}</span>}
                 </span>
                 <div className="flex gap-2">
                   {!translationInput && hasLLM() && (
                     <button onClick={handleLLMTranslate} disabled={translating}
                       className="text-xs text-amber-600 hover:text-amber-700 font-medium">
-                      {translating ? 'Translating…' : '✨ AI Translate'}
+                      {translating ? '翻译中…' : '✨ AI 翻译'}
                     </button>
                   )}
                   <button onClick={() => setEditTranslation(!editTranslation)}
                     className="text-xs text-ink-300 hover:text-ink-600 font-medium">
-                    {editTranslation ? 'Done' : '✏️ Edit'}
+                    {editTranslation ? '完成' : '✏️ 编辑'}
                   </button>
                 </div>
               </div>
@@ -250,29 +233,29 @@ export default function ListenPage() {
               {editTranslation ? (
                 <div className="space-y-2">
                   <textarea value={translationInput} onChange={(e) => setTranslationInput(e.target.value)}
-                    placeholder="Paste or type translation here…" rows={6}
+                    placeholder="粘贴或输入译文…" rows={6}
                     className="w-full bg-paper-100 border border-paper-300 rounded-xl px-4 py-3 text-sm text-ink-600 placeholder-ink-200 focus:outline-none focus:border-amber-300 transition resize-y" />
                   <button onClick={handleSaveManualTranslation}
                     className="px-4 py-2 bg-ink-700 text-white rounded-full text-xs font-semibold hover:bg-ink-800 transition">
-                    Save Translation
+                    保存译文
                   </button>
                 </div>
               ) : translationInput ? (
                 <p className="text-sm text-ink-500 leading-relaxed">{translationInput}</p>
               ) : (
-                <p className="text-sm text-ink-200 italic">No translation yet. Use ✨ AI Translate or ✏️ paste your own.</p>
+                <p className="text-sm text-ink-200 italic">暂无译文，使用 ✨ AI 翻译 或 ✏️ 手动粘贴</p>
               )}
             </div>
           )}
         </div>
       )}
 
-      {/* ── DICTATION MODE ── */}
+      {/* 逐句听写 */}
       {viewMode === 'dictation' && (
         <div className="space-y-4">
           <button onClick={() => setViewMode('listen')}
             className="text-sm text-ink-300 hover:text-ink-600 transition-colors">
-            ← Back to Listening
+            ← 返回听力
           </button>
           <SentencePractice
             key={`dict-${dictIdx}`}
@@ -287,12 +270,12 @@ export default function ListenPage() {
         </div>
       )}
 
-      {/* ── SHADOW MODE ── */}
+      {/* 影子跟读 */}
       {viewMode === 'shadow' && (
         <div className="space-y-4">
           <button onClick={() => setViewMode('listen')}
             className="text-sm text-ink-300 hover:text-ink-600 transition-colors">
-            ← Back to Listening
+            ← 返回听力
           </button>
           <ShadowMode sentences={sentences} onComplete={handleShadowComplete} />
         </div>
